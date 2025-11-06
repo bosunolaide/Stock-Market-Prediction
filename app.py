@@ -5,14 +5,14 @@ import tensorflow as tf
 import pickle
 import yfinance as yf
 from datetime import datetime, timedelta
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
 # =========================================================
 # 🎯 PAGE CONFIG
 # =========================================================
 st.set_page_config(page_title="Stock Market Prediction", page_icon="📈", layout="wide")
 st.title("📈 Stock Market Prediction Dashboard")
-st.write("Predict stock prices using your trained deep learning model.")
+st.write("Interactively predict future stock prices using your trained deep learning model.")
 
 # =========================================================
 # 🧩 LOAD MODEL AND SCALERS
@@ -42,6 +42,7 @@ ticker = st.sidebar.text_input("Stock Symbol (e.g. AAPL, TSLA, GOOGL)", "GOOGL")
 start_date = st.sidebar.date_input("Start Date", datetime(2018, 1, 1))
 end_date = st.sidebar.date_input("End Date", datetime.today())
 previous_date = st.sidebar.text_input("Previous Date (YYYY-MM-DD)", "2021-01-14")
+forecast_days = st.sidebar.slider("Days to Predict", 1, 30, 7)
 
 @st.cache_data
 def load_data(symbol, start, end):
@@ -53,7 +54,7 @@ st.subheader(f"📅 Historical Data for {ticker}")
 st.dataframe(data.tail())
 
 # =========================================================
-# 🔮 PREDICTION FUNCTION (from your notebook)
+# 🔮 PREDICTION FUNCTIONS
 # =========================================================
 def PredictStockPrice(Model, DataFrame, PreviousDate, feature_length=32):
     idx_location = DataFrame.index.get_loc(PreviousDate)
@@ -64,30 +65,93 @@ def PredictStockPrice(Model, DataFrame, PreviousDate, feature_length=32):
     Prediction = Target_Scaler.inverse_transform(Prediction)
     return Prediction[0][0]
 
+def PredictMultipleDays(Model, DataFrame, start_date, days=7, feature_length=32):
+    df_copy = DataFrame.copy()
+    preds = []
+    dates = []
+    current_date = pd.to_datetime(start_date)
+
+    for _ in range(days):
+        try:
+            pred = PredictStockPrice(Model, df_copy, current_date.strftime("%Y-%m-%d"), feature_length)
+        except Exception:
+            idx_location = df_copy.index.get_loc(df_copy.index[-1])
+            Features = df_copy.iloc[idx_location - feature_length: idx_location, :].values
+            Features = np.expand_dims(Features, axis=0)
+            Features = Feature_Scaler.transform(Features)
+            pred = Model.predict(Features)
+            pred = Target_Scaler.inverse_transform(pred)[0][0]
+
+        preds.append(pred)
+        current_date += timedelta(days=1)
+        dates.append(current_date)
+
+        new_row = df_copy.iloc[-1:].copy()
+        new_row.index = [current_date]
+        new_row["Close"] = pred
+        df_copy = pd.concat([df_copy, new_row])
+
+    return pd.DataFrame({"Date": dates, "Predicted": preds})
+
 # =========================================================
 # 🚀 RUN PREDICTION
 # =========================================================
-if st.button("Predict Next Day Price"):
+if st.button("Predict Future Prices"):
     try:
-        prediction = PredictStockPrice(loaded_model, data, previous_date)
-        st.success(f"💰 Predicted Closing Price after {previous_date}: **${prediction:.2f}**")
+        forecast_df = PredictMultipleDays(loaded_model, data, previous_date, forecast_days)
+        st.success(f"✅ Successfully predicted the next {forecast_days} days!")
 
-        # Plot last few days + predicted price
-        last_dates = data.index[-32:]
-        last_prices = data['Close'].iloc[-32:]
-        future_date = pd.to_datetime(previous_date) + timedelta(days=1)
+        # Plotly chart setup
+        fig = go.Figure()
 
-        fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(last_dates, last_prices, label="Historical Close", color='blue')
-        ax.scatter(future_date, prediction, color='orange', label="Predicted Price")
-        ax.legend()
-        ax.set_title(f"{ticker} Price Prediction")
-        st.pyplot(fig)
+        # Historical prices
+        fig.add_trace(go.Scatter(
+            x=data.index[-90:],
+            y=data["Close"].iloc[-90:],
+            mode='lines',
+            name='Historical',
+            line=dict(color='royalblue', width=2)
+        ))
+
+        # Forecast prices
+        fig.add_trace(go.Scatter(
+            x=forecast_df["Date"],
+            y=forecast_df["Predicted"],
+            mode='lines+markers',
+            name='Forecast',
+            line=dict(color='orange', width=3, dash='dot'),
+            marker=dict(size=6, color='orange')
+        ))
+
+        # Shaded region for forecast period
+        fig.add_vrect(
+            x0=forecast_df["Date"].iloc[0],
+            x1=forecast_df["Date"].iloc[-1],
+            fillcolor="orange",
+            opacity=0.1,
+            line_width=0,
+            annotation_text=f"{forecast_days}-Day Forecast",
+            annotation_position="top left"
+        )
+
+        # Chart formatting
+        fig.update_layout(
+            title=f"{ticker} {forecast_days}-Day Price Forecast",
+            xaxis_title="Date",
+            yaxis_title="Price (USD)",
+            hovermode="x unified",
+            template="plotly_white",
+            font=dict(size=14),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            margin=dict(l=40, r=40, t=60, b=40)
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("📈 Forecast Data")
+        st.dataframe(forecast_df)
+
+        csv = forecast_df.to_csv(index=False).encode("utf-8")
+        st.download_button("📥 Download Forecast", csv, "forecast.csv", "text/csv")
     except Exception as e:
-        st.error(f"❌ Prediction failed: {e}")
-
-# =========================================================
-# 📤 EXPORT OPTION
-# =========================================================
-csv = data.to_csv().encode('utf-8')
-st.download_button("📥 Download Historical Data", csv, "historical_data.csv", "text/csv")
+        st.error(f"❌ Forecast failed: {e}")
