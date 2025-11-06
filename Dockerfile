@@ -25,5 +25,6 @@ EXPOSE 8501
 EXPOSE 8000
 
 # Use supervisord or bash to run both services concurrently
-# We'll use a small bash trick to run both Streamlit and FastAPI
+# Run both Streamlit and FastAPI
 CMD bash -c "uvicorn api:app --host 0.0.0.0 --port 8000 & streamlit run app.py --server.port=8501 --server.address=0.0.0.0"
+
