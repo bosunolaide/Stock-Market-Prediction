@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+streamlit
+tensorflow
+pandas
+numpy
+yfinance
+plotly
