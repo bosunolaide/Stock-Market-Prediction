@@ -220,7 +220,7 @@ Defined in `docker-compose.yml` so Streamlit can call the backend service intern
 
 ## 🧑‍💻 Author
 
-**[Abiola Olatunbosun]**  
+**Abiola Olatunbosun**  
 AI Engineer • Full Stack Developer  
 🌐 [LinkedIn](https://linkedin.com/in/abiola-olatunbosun/) | [GitHub](https://github.com/bosunolaide)
 
