@@ -4,3 +4,14 @@ tensorflow
 pandas
 numpy
 yfinance
+mlflow
+prefect>=2.0
+optuna
+boto3
+pydantic-settings
+prometheus-client
+pytest
+scikit-learn
+great-expectations
+evidently
+ruff
