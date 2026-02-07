@@ -96,4 +96,4 @@ def predict_multi_day(req: MultiDayPredictionRequest):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model_loaded": Model is not None}
+    return {"status": "ok", "model_loaded": bundle is not None}
