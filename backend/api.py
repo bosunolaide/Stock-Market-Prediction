@@ -53,18 +53,49 @@ class MultiDayPredictionResponse(BaseModel):
 def predict_one_day(model, df: pd.DataFrame, previous_date: datetime, feature_length: int = 32) -> float:
     if bundle is None:
         raise HTTPException(status_code=500, detail="Model bundle not loaded")
-    Feature_Scaler = bundle.feature_scaler
-    Target_Scaler = bundle.target_scaler
-    if model is None or Feature_Scaler is None or Target_Scaler is None:
+
+    feature_scaler = bundle.feature_scaler
+    target_scaler = bundle.target_scaler
+
+    if model is None or feature_scaler is None or target_scaler is None:
         raise HTTPException(status_code=500, detail="Model or scalers not loaded")
+
+    # Ensure DatetimeIndex and sorted ascending (required for pad/ffill indexing)
+    df = df.copy()
     df.index = pd.to_datetime(df.index)
-    idx_location = df.index.get_loc(previous_date.strftime("%Y-%m-%d"), method="pad")
-    Features = df.iloc[idx_location - feature_length: idx_location, :].values
-    Features = np.expand_dims(Features, axis=0)
-    Features = Feature_Scaler.transform(Features)
-    Prediction = model.predict(Features)
-    Prediction = Target_Scaler.inverse_transform(Prediction)
-    return float(Prediction[0][0])
+    df = df.sort_index()
+
+    # Convert previous_date to a pandas Timestamp (naive)
+    ts = pd.Timestamp(previous_date)
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert(None)
+
+    # Find the nearest index at-or-before previous_date (pad / forward-fill)
+    idx = df.index.get_indexer([ts], method="pad")[0]
+    if idx == -1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"previous_date={ts.date()} is earlier than the first available date {df.index.min().date()}",
+        )
+
+    if idx < feature_length:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Not enough historical rows before {ts.date()} to build a window of length {feature_length}. "
+                   f"Need at least {feature_length} rows, but have {idx}.",
+        )
+
+    # Build feature window
+    features = df.iloc[idx - feature_length: idx, :].values  # shape: (feature_length, n_features)
+    features = np.expand_dims(features, axis=0)              # shape: (1, feature_length, n_features)
+
+    # Scale + predict + inverse scale
+    features = feature_scaler.transform(features)
+    prediction = model.predict(features)
+    prediction = target_scaler.inverse_transform(prediction)
+
+    return float(prediction[0][0])
+
 
 def predict_multiple_days(model, df, previous_date, days=7, feature_length=32):
     df_copy = df.copy()
