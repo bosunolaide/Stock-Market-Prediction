@@ -29,6 +29,20 @@ class _CompatUnpickler(pickle.Unpickler):
 def _pickle_load_compat(file_obj):
     return _CompatUnpickler(file_obj).load()
 
+def _ensure_scaler_fitted(scaler_obj: object, name: str) -> None:
+    """
+    Ensures the loaded scaler is usable.
+    Our MultiDimensionScaler wraps an sklearn scaler in `scaler_obj.scaler`.
+    """
+    inner = getattr(scaler_obj, "scaler", None)
+    if inner is None:
+        raise RuntimeError(f"{name} has no `.scaler` attribute (wrong artifact type?)")
+    try:
+        check_is_fitted(inner)
+    except Exception as e:
+        raise RuntimeError(
+            f"{name} is not fitted. You likely loaded the wrong artifact file, or the scaler was pickled before fit()."
+        ) from e
 
 @dataclass
 class ModelBundle:
@@ -43,7 +57,12 @@ def _load_fallback() -> ModelBundle:
         feature_scaler = _pickle_load_compat(f)
     with open(settings.fallback_target_scaler_path, "rb") as f:
         target_scaler = _pickle_load_compat(f)
+
+    _ensure_scaler_fitted(feature_scaler, "feature_scaler (fallback)")
+    _ensure_scaler_fitted(target_scaler, "target_scaler (fallback)")
+
     return ModelBundle(model=model, feature_scaler=feature_scaler, target_scaler=target_scaler, source="fallback")
+
 
 def load_model_bundle() -> ModelBundle:
     """Load model + scalers from MLflow Model Registry if available; otherwise fall back to repo artifacts."""
@@ -56,7 +75,12 @@ def load_model_bundle() -> ModelBundle:
                 feature_scaler = _pickle_load_compat(f)
             with open(artifacts.target_scaler_path, "rb") as f:
                 target_scaler = _pickle_load_compat(f)
+
+            _ensure_scaler_fitted(feature_scaler, "feature_scaler (mlflow)")
+            _ensure_scaler_fitted(target_scaler, "target_scaler (mlflow)")
+
             return ModelBundle(model=model, feature_scaler=feature_scaler, target_scaler=target_scaler, source="mlflow")
+
     except Exception as e:
         logger.warning("MLflow load failed, using fallback. Error: %s", e)
 
