@@ -8,7 +8,7 @@ import os
 st.set_page_config(page_title="Stock Market Prediction", page_icon="📈", layout="wide")
 st.title("📈 Stock Market Prediction Dashboard")
 
-API_URL = os.getenv("API_URL", "http://backend:8000")
+API_URL = http://stock-mlops-alb-781120071.us-east-1.elb.amazonaws.com
 
 try:
     r = requests.get(f"{API_URL}/health")
